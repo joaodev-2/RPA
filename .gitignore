@@ -1,0 +1,33 @@
+# --- Específico do seu Projeto ---
+# Ignorar arquivos compilados do Python (aparece nas suas pastas 'tarefas' e raiz)
+perfil_robo_softexpert/
+__pycache__/
+*.pyc
+
+# Ignorar pastas de saída ou dados locais (como vi a pasta 'excel')
+# Se esses excels são gerados pelo robô ou são dados brutos, não devem ir para o Git.
+excel/
+*.xlsx
+*.xls
+*.csv
+
+# Ignorar arquivos de debug ou logs (vi referência a 'debug_...')
+debug_*.log
+debug/
+*.log
+
+# --- Segurança (CRÍTICO) ---
+# Vi um arquivo chamado 'auth.py'.
+# Se ele conter senhas, tokens ou chaves de API, IGNORE-O IMEDIATAMENTE.
+config.py
+.env
+
+# --- Padrão Python (Boas Práticas) ---
+# Ignorar ambiente virtual (caso use venv, env, .venv)
+.venv/
+env/
+venv/
+
+# Ignorar configurações locais da IDE (VS Code, Pycharm)
+.vscode/
+.idea/

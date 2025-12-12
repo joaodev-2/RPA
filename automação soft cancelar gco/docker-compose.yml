@@ -1,0 +1,17 @@
+services:
+  robo-softexpert:
+    build: .
+    image: robo-softexpert:latest
+    container_name: meu_robo_gco
+    # Mapeia a pasta atual do Windows (.) para a pasta /app do container
+    volumes:
+      - .:/app
+    # Configurações de ambiente
+    environment:
+      - MODO_DOCKER=true
+      - PYTHONUNBUFFERED=1 # Garante que os prints apareçam na hora no terminal
+    # Configuração vital para o Chrome não quebrar por falta de memória
+    ipc: host 
+    # Mantém o container interativo se precisar
+    stdin_open: true
+    tty: true
