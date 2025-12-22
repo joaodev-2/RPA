@@ -1,0 +1,52 @@
+services:
+  db:
+    image: postgres:15.2-alpine
+    container_name: iptu_postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 1234
+      POSTGRES_DB: iptu_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d iptu_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    container_name: iptu_scraper
+    depends_on:
+      db:
+        condition: service_healthy
+
+    command: tail -f /dev/null  # Mantém o container rodando
+    environment:
+      - DB_CONNECTION=postgresql://postgres:1234@db:5432/iptu_db
+      - HEADLESS=true
+      - URL_ALVO=https://sistemas.lavras.mg.gov.br/portalcidadao/#78c3e513dd43cb27d8a3e2f376196ffc656d7ea577b2c6fbb60d64c%C4%B2f519ae11de579d3556429a3a0d60d4126ce6124f4cb72c40f74b9be24c4ace0717f414682b9084f7f2f2badbde691ae9ac4beb640736cff1faebe42754e339242d8418003c6c5819aa28eace2710516b433e206b090b5806d05681f33a046be86a2499f7b46767e90bb7d0822aa8f94fd4decc318e3e180ff3b793678ea76aaa108c007815e5a98b32c687c24cee6b599eb926306b35da8e66fa5686c4ca84940821dd5cf90c719a9dc91262a649441dca545f27983a68ef6d89da24ca85ded900914c64
+    volumes:
+      - ./data:/app/data
+    
+    # --- NOVIDADE AQUI: WATCH ---
+    develop:
+      watch:
+        # 1. Se mexer no requirements.txt, reconstrói a imagem
+        - action: rebuild
+          path: requirements.txt
+          
+        # 2. Se mexer em qualquer .py, sincroniza e reinicia o container
+        - action: sync+restart
+          path: .
+          target: /app
+          ignore:
+            - data/
+            - .venv/
+            - __pycache__/
+            - .git/
+
+volumes:
+  postgres_data:

@@ -1,0 +1,42 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# --- Ambientes Virtuais (VENV) ---
+# Ignora a pasta onde as libs estão instaladas
+venv/
+.venv/
+env/
+
+# --- Variáveis de Ambiente e Segredos (CRÍTICO) ---
+# Jamais suba senhas ou chaves de API
+.env
+.env.local
+.env.*
+
+# --- Dados e Arquivos Temporários ---
+# Ignora os JSONs gerados e a pasta temp
+data/temp/
+data/*.json
+data/erros/
+
+# Dica: Se quiser manter a pasta 'data' vazia no git,
+# mas ignorar o conteúdo, crie um arquivo vazio chamado 
+# .gitkeep dentro de data/ e descomente a linha abaixo:
+!data/.gitkeep
+
+# --- IDE e Ferramentas ---
+.vscode/
+.idea/
+.devdvrc
+*.swp
+
+# --- Playwright (Se tiver relatórios ou cache) ---
+test-results/
+playwright-report/
+
+# --- Sistema Operacional ---
+.DS_Store
+Thumbs.db

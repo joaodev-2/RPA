@@ -1,0 +1,12 @@
+[
+  { 
+    "username": "postgres",
+    "name": "Local PostgreSQL DevDB",
+    "type": "postgres",
+    "host": "localhost",
+    "port": 5432,
+    "user": "postgres",
+    "password": "1234",
+    "database": "iptu_db"
+  }
+]
