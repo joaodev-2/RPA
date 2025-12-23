@@ -1,22 +1,17 @@
 # -*- coding: utf-8 -*-
 import os
 import time
-import re
-from pathlib import Path
 from playwright.sync_api import sync_playwright
 from src.handlers.captcha import CaptchaHandler
 
 class IPTUScraper:
     def __init__(self, url_alvo):
         self.url = url_alvo
-        self.download_path = Path("data/boletos")
-        self.download_path.mkdir(parents=True, exist_ok=True)
+        # Não criamos mais pastas físicas, pois o processamento é em memória.
         
     def extrair_dados(self, codigo_reduzido):
-        print(f"🚀 [Scraper] Iniciando extração para: {codigo_reduzido}")
-        
         with sync_playwright() as p:
-            # Configuração do Browser
+            # Configuração do Browser (Headless controlado por env)
             modo_headless = os.getenv("HEADLESS", "false").lower() == "true"
             browser = p.chromium.launch(
                 headless=modo_headless,
@@ -27,25 +22,22 @@ class IPTUScraper:
             page = context.new_page()
             
             try:
-                # 1. Acessar e Preencher
-                print(f"🌍 [Scraper] Acessando URL...")
+                # 1. Acesso e Preenchimento
                 page.goto(self.url, timeout=60000)
                 
-                # Tratamento para input que varia
+                # Tentativa de localizar o input por texto ou classe genérica
                 try:
                     page.locator("//div[contains(text(), 'Código Reduzido')]/following-sibling::input").first.fill(str(codigo_reduzido))
                 except:
                     page.locator("input.form-control").first.fill(str(codigo_reduzido))
                 
-                # 2. Captcha
+                # 2. Resolução do Captcha
                 captcha = CaptchaHandler(page)
                 if not captcha.resolver_via_audio():
-                    raise Exception("Falha no Captcha")
+                    return None # Falha no captcha aborta o processo
                 
-                # 3. Interceptação do JSON
-                print("🕵️ [Scraper] Consultando dados...")
-                
-                # Prepara a interceptação
+                # 3. Interceptação da Requisição JSON (Dados da Dívida)
+                # Aguarda o POST/PUT que retorna os dados após clicar em consultar
                 with page.expect_response(lambda r: "getExtratoIPTU" in r.url and r.request.method == "PUT", timeout=30000) as captura:
                     btn = page.locator(".gwt-SubmitButton").first
                     if not btn.is_visible():
@@ -55,113 +47,85 @@ class IPTUScraper:
                 response = captura.value
                 dados_json = {}
                 
-                # Processa o Retorno
                 if response.status == 200:
                     dados_json = response.json()
-                    print("✅ [Scraper] JSON capturado com sucesso!")
                     
-                    # --- AQUI ESTÁ A MUDANÇA: DOWNLOAD GUIADO PELO JSON ---
-                    # Passamos o JSON para a função de download
+                    # Se houver débitos (chave 'guia'), iniciamos o download em memória
                     if "guia" in dados_json:
-                        self._baixar_por_json(page, dados_json, codigo_reduzido)
-                    else:
-                        print("⚠️ JSON veio sem a chave 'guia'. Estrutura desconhecida.")
+                        self._baixar_pdf_para_memoria(page, dados_json)
 
                 elif response.status == 204:
-                    print("ℹ️ [Scraper] Sem débitos (204).")
-                    dados_json = {"debitos": []}
+                    # Status 204 geralmente indica "Nenhum débito encontrado"
+                    dados_json = {"guia": []}
                 
                 return dados_json
                     
-            except Exception as e:
-                print(f"💥 [Scraper] Erro: {e}")
+            except Exception:
                 return None
             finally:
                 context.close()
                 browser.close()
 
-    def _baixar_por_json(self, page, dados_json, codigo_imovel):
+    def _baixar_pdf_para_memoria(self, page, dados_json):
         """
-        Versão Robustez Total: Varre as linhas da tela e cruza com o JSON
-        para garantir que estamos baixando a parcela certa.
+        Cruza os dados do JSON com a tabela HTML, clica no botão de download,
+        lê o arquivo temporário para a memória RAM e injeta no dicionário JSON.
         """
-        print("   📉 Cruzando dados do JSON com a Tela...")
-        
         try:
-            # 1. Pega lista de débitos reais do JSON
-            lista_original = dados_json.get("guia", [{}])[0].get("parcelaIPTU", [])
-            debitos_abertos = []
+            # Filtra apenas parcelas em aberto para evitar processamento inútil
+            lista_parcelas = dados_json.get("guia", [{}])[0].get("parcelaIPTU", [])
+            debitos_abertos = [
+                p for p in lista_parcelas 
+                if "GUIA PAGA" not in p.get("linhaDigitavel", "").upper() 
+                and "NÃO RECEBER" not in p.get("linhaDigitavel", "").upper()
+            ]
             
-            # Filtra apenas o que é dívida no JSON
-            for p in lista_original:
-                linha_dig = p.get("linhaDigitavel", "").upper()
-                if "GUIA PAGA" not in linha_dig and "NÃO RECEBER" not in linha_dig:
-                    debitos_abertos.append(p)
-            
-            print(f"      📋 O JSON indica {len(debitos_abertos)} parcelas em aberto.")
-
             if not debitos_abertos:
                 return
 
-            # 2. Na Tela: Pega todas as linhas (tr) que têm o botão de PDF
-            # Isso ignora cabeçalhos e linhas sem ação
+            # Localiza todas as linhas da tabela que possuem botão de download
             linhas_com_botao = page.locator("tr:has(a:has-text('Emitir 2ª Via PDF'))").all()
-            print(f"      👀 A Tela mostra {len(linhas_com_botao)} linhas com botão de download.")
 
-            # 3. O Grande Encontro (Match)
             for debito in debitos_abertos:
-                num_parc = str(debito.get("numero"))
-                vencimento_json = debito.get("vencimento") # ex: 22-12-2025
-                valor_json = str(debito.get("totalParcela")).replace(".", ",") # 198.3 -> 198,3
-                
-                # Ajuste de data: JSON usa hifen (22-12), tela costuma usar barra (22/12)
-                vencimento_tela_padrao = vencimento_json.replace("-", "/")
+                # Prepara dados para o "Match" (Encontro) entre JSON e HTML
+                vencimento_json = debito.get("vencimento")
+                valor_json = str(debito.get("totalParcela")).replace(".", ",")
+                vencimento_tela = vencimento_json.replace("-", "/") # Ajuste de formato de data
 
-                encontrou = False
-                
-                # Testa cada linha da tela para ver se é a dona desse débito
+                # Itera sobre as linhas visuais para encontrar a correspondente
                 for linha in linhas_com_botao:
                     texto_linha = linha.inner_text()
                     
-                    # CRITÉRIO DE SEGURANÇA:
-                    # Só clica se a linha contiver o VENCIMENTO ou o VALOR aproximado
-                    # (Usar só o número da parcela é perigoso, pois "7" existe em datas e valores)
-                    
-                    match_vencimento = vencimento_tela_padrao in texto_linha or vencimento_json in texto_linha
-                    match_valor = valor_json in texto_linha
-                    
+                    # Verifica se a linha contém a data ou o valor do débito atual
+                    match_vencimento = (vencimento_tela in texto_linha or vencimento_json in texto_linha)
+                    match_valor = (valor_json in texto_linha)
+
                     if match_vencimento or match_valor:
-                        print(f"      🎯 Match confirmado! Parcela {num_parc} (Venc: {vencimento_json})")
-                        
                         botao = linha.locator("a:has-text('Emitir 2ª Via PDF')").first
+                        botao.scroll_into_view_if_needed()
                         
-                        # --- CLIQUE E DOWNLOAD ---
                         try:
-                            # Rola até o botão
-                            botao.scroll_into_view_if_needed()
-                            
+                            # Gerencia o evento de download
                             with page.expect_download(timeout=60000) as download_info:
                                 botao.click(force=True)
                             
                             download = download_info.value
-                            nome_arquivo = f"boleto_{codigo_imovel}_parc{num_parc}_{vencimento_json}.pdf"
-                            caminho_final = self.download_path / nome_arquivo
+                            path_temp = download.path()
                             
-                            download.save_as(caminho_final)
-                            print(f"         ✅ Arquivo Salvo: {nome_arquivo}")
-                            encontrou = True
+                            # Lê os bytes do arquivo temporário para a memória
+                            with open(path_temp, "rb") as f:
+                                bytes_pdf = f.read()
                             
-                            # Remove a linha da lista para não clicar nela de novo (otimização)
-                            # (Opcional, mas ajuda a evitar duplicidade se o match for fraco)
+                            # Injeta os bytes direto no objeto JSON original
+                            debito['blob_pdf'] = bytes_pdf
                             
-                            time.sleep(3) # Respeita o loading do site
-                            break # Sai do loop de linhas e vai para o próximo débito do JSON
+                            # Pequena pausa para evitar sobrecarga ou bloqueio do servidor
+                            time.sleep(2)
+                            break 
                             
-                        except Exception as e:
-                            print(f"         ❌ Erro no download da parcela {num_parc}: {e}")
-                
-                if not encontrou:
-                    print(f"      ⚠️ ALERTA: O JSON pede a parcela {num_parc} (Venc: {vencimento_json}), mas não achei ela na tabela visualmente.")
+                        except Exception:
+                            # Se falhar um download, continua para o próximo débito
+                            continue
 
-        except Exception as e:
-            print(f"   ☠️ Erro crítico na lógica de cruzamento JSON/Tela: {e}")
+        except Exception:
+            pass
