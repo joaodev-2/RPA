@@ -3,7 +3,7 @@ services:
     image: postgres:15.2-alpine
     container_name: iptu_postgres
     ports:
-      - "5432:5432"
+      - "5433:5432"
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: 1234
@@ -23,7 +23,7 @@ services:
       db:
         condition: service_healthy
 
-    command: tail -f /dev/null  # Mantém o container rodando
+    command: python main.py
     environment:
       - DB_CONNECTION=postgresql://postgres:1234@db:5432/iptu_db
       - HEADLESS=true

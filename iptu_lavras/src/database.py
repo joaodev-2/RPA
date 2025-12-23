@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey, Text
+from sqlalchemy import LargeBinary, create_engine, Column, Integer, String, Float, DateTime, ForeignKey, Text
 from sqlalchemy.orm import sessionmaker, declarative_base, relationship
 from datetime import datetime
 
@@ -28,7 +28,7 @@ class DebitoIPTU(Base):
     valor = Column(Float)
     vencimento = Column(String(20))
     situacao = Column(String(50))
-    link_boleto = Column(Text, nullable=True)
+    boleto_pdf = Column(LargeBinary, nullable=True)
     
     imovel = relationship("Imovel", back_populates="debitos")
 

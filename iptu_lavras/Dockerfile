@@ -1,21 +1,32 @@
-# Usa a imagem oficial do Playwright (já tem Python e dependências de OS)
-FROM mcr.microsoft.com/playwright/python:v1.40.0-jammy
+# 1. Usar versão SLIM (Muito mais leve que a normal)
+FROM python:3.10-slim
 
-# Instala FFmpeg (Crucial para o pydub/AudioSegment funcionar)
-RUN apt-get update && apt-get install -y ffmpeg
+# Variáveis para o Python não gerar arquivos .pyc e logs imediatos
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
-# Define diretório de trabalho
 WORKDIR /app
 
-# Copia e instala dependências Python
+# 2. Instalar dependências do sistema e LIMPAR o cache na mesma camada
+# Isso evita que o "lixo" do apt-get fique salvo na imagem
+RUN apt-get update && apt-get install -y \
+    wget \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+# 3. Copiar e instalar requirements (usando cache do Docker inteligentemente)
 COPY requirements.txt .
+
+# --no-cache-dir: Não guarda o cache do instalador pip (economiza muito espaço)
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Instala o navegador Chromium do Playwright
+# 4. Playwright: Instalar APENAS o Chromium
+# O 'install-deps' instala as libs do linux que o chrome precisa
 RUN playwright install chromium
+RUN playwright install-deps chromium
 
-# Copia todo o código do projeto para dentro do container
+# 5. Copiar o código fonte (O resto é ignorado pelo .dockerignore)
 COPY . .
 
-# Comando para rodar a aplicação
+# Comando final (lembre-se: em prod, tire o tail -f)
 CMD ["python", "main.py"]
