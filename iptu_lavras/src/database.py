@@ -1,21 +1,17 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey, LargeBinary
-from sqlalchemy.orm import sessionmaker, declarative_base, relationship
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, LargeBinary
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import declarative_base, relationship
 from datetime import datetime
 
 Base = declarative_base()
 
 class Imovel(Base):
     __tablename__ = 'imoveis'
-    
     id = Column(Integer, primary_key=True)
     codigo_reduzido = Column(String(50), unique=True, nullable=False)
-    status = Column(String(20), default="PENDENTE") 
+    status = Column(String(50), default="PENDENTE") 
     data_atualizacao = Column(DateTime, default=datetime.now, onupdate=datetime.now)
-    
-    # Campo para auditoria/histórico (Salva o retorno completo do Scraper)
     dados_brutos = Column(JSONB, nullable=True) 
-    
     debitos = relationship("DebitoIPTU", back_populates="imovel", cascade="all, delete-orphan")
 
 class DebitoIPTU(Base):
@@ -24,24 +20,28 @@ class DebitoIPTU(Base):
     id = Column(Integer, primary_key=True)
     imovel_id = Column(Integer, ForeignKey('imoveis.id'))
     
-    ano = Column(Integer)
+    ano = Column(Integer, nullable=False)
     parcela = Column(Integer)
     valor = Column(Float)
-    vencimento = Column(String(20))
-    situacao = Column(String(50))
     
-    # Campo binário para armazenar o arquivo PDF dentro do banco
-    boleto_pdf = Column(LargeBinary, nullable=True) 
+    # Novas colunas de data
+    vencimento = Column(String(20))          
+    vencimento_original = Column(String(20)) 
+    
+    situacao = Column(String(50)) # "Aberto", "Quitado", "Cancelado"
+    boleto_pdf = Column(LargeBinary, nullable=True) # Será NULL se estiver quitado
     
     imovel = relationship("Imovel", back_populates="debitos")
 
 class DatabaseHandler:
+    # ... (O restante da classe permanece igual) ...
     def __init__(self, connection_string):
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
         self.engine = create_engine(connection_string, echo=False)
         self.Session = sessionmaker(bind=self.engine)
     
     def init_db(self):
-        """Cria as tabelas caso não existam."""
         Base.metadata.create_all(self.engine)
 
     def get_session(self):

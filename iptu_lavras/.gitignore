@@ -30,7 +30,7 @@ data/boletos/
 # --- IDE e Ferramentas ---
 .vscode/
 .idea/
-.devdvrc
+.devdbrc
 *.swp
 
 # --- Playwright (Se tiver relatórios ou cache) ---
